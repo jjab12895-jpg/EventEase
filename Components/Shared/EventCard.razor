@@ -1,0 +1,73 @@
+@* Reusable card that displays one event.
+   Supports two-way binding from the parent:  <EventCard @bind-Event="myEvent" />  *@
+
+<div class="card h-100 shadow-sm event-card">
+    <div class="card-body">
+        @if (IsEditing)
+        {
+            <div class="mb-2">
+                <label class="form-label small" for="name-@Event.Id">Event name</label>
+                <input id="name-@Event.Id" class="form-control form-control-sm"
+                       @bind="Event.Name" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label small" for="date-@Event.Id">Date</label>
+                <input id="date-@Event.Id" type="date" class="form-control form-control-sm"
+                       @bind="Event.Date" @bind:after="NotifyChangedAsync" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label small" for="loc-@Event.Id">Location</label>
+                <input id="loc-@Event.Id" class="form-control form-control-sm"
+                       @bind="Event.Location" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
+            </div>
+        }
+        else
+        {
+            <h5 class="card-title">@Event.Name</h5>
+            <p class="card-text mb-1">
+                <span class="text-muted">Date:</span> @Event.Date.ToString("dddd, MMM d, yyyy")
+            </p>
+            <p class="card-text">
+                <span class="text-muted">Location:</span> @Event.Location
+            </p>
+        }
+    </div>
+
+    <div class="card-footer bg-transparent d-flex gap-2">
+        @if (ShowActions)
+        {
+            <a class="btn btn-sm btn-primary" href="@($"events/{Event.Id}")">Details</a>
+            <a class="btn btn-sm btn-outline-success" href="@($"events/{Event.Id}/register")">Register</a>
+        }
+        @if (AllowEdit)
+        {
+            <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="ToggleEdit">
+                @(IsEditing ? "Done" : "Edit")
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The event to display. Required.</summary>
+    [Parameter, EditorRequired]
+    public EventItem Event { get; set; } = default!;
+
+    /// <summary>Raised when a field changes, enabling @bind-Event in the parent.</summary>
+    [Parameter]
+    public EventCallback<EventItem> EventChanged { get; set; }
+
+    /// <summary>Show the Details / Register links.</summary>
+    [Parameter]
+    public bool ShowActions { get; set; } = true;
+
+    /// <summary>Show the Edit button so the fields can be changed inline.</summary>
+    [Parameter]
+    public bool AllowEdit { get; set; } = true;
+
+    private bool IsEditing { get; set; }
+
+    private void ToggleEdit() => IsEditing = !IsEditing;
+
+    private Task NotifyChangedAsync() => EventChanged.InvokeAsync(Event);
+}

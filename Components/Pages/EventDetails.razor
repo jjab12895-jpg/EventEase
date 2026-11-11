@@ -1,0 +1,43 @@
+@page "/events/{Id:int}"
+@inject EventService EventService
+
+<PageTitle>@(ev?.Name ?? "Event not found") · EventEase</PageTitle>
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="events">Events</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@(ev?.Name ?? "Not found")</li>
+    </ol>
+</nav>
+
+@if (ev is null)
+{
+    <div class="alert alert-warning">No event with ID @Id exists.</div>
+    <a class="btn btn-secondary" href="events">Back to events</a>
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-md-5">
+            @* Two-way binding: edits in the card update `ev`, and the text on the right re-renders. *@
+            <EventCard @bind-Event="ev" ShowActions="false" />
+        </div>
+        <div class="col-md-7">
+            <h1>@ev.Name</h1>
+            <p class="lead">@ev.Date.ToString("D") · @ev.Location</p>
+            <p>@ev.Description</p>
+            <a class="btn btn-success" href="@($"events/{ev.Id}/register")">Register for this event</a>
+            <a class="btn btn-link" href="events">Back to events</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private EventItem? ev;
+
+    // OnParametersSet (not OnInitialized) so navigating between /events/1 and /events/2 reloads the data.
+    protected override void OnParametersSet() => ev = EventService.GetById(Id);
+}

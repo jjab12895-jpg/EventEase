@@ -1,0 +1,32 @@
+@page "/events"
+@inject EventService EventService
+
+<PageTitle>Events · EventEase</PageTitle>
+
+<h1>Upcoming events</h1>
+<p class="text-muted">Browse events, open the details, or register. Use <em>Edit</em> to change a card — the summary below updates live (two-way binding).</p>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3 mb-4">
+    @foreach (var ev in events)
+    {
+        <div class="col" @key="ev.Id">
+            <EventCard Event="ev" EventChanged="OnEventChanged" />
+        </div>
+    }
+</div>
+
+@if (lastEdited is not null)
+{
+    <div class="alert alert-info">
+        Last edited: <strong>@lastEdited.Name</strong> — @lastEdited.Date.ToShortDateString() — @lastEdited.Location
+    </div>
+}
+
+@code {
+    private IReadOnlyList<EventItem> events = [];
+    private EventItem? lastEdited;
+
+    protected override void OnInitialized() => events = EventService.GetAll();
+
+    private void OnEventChanged(EventItem updated) => lastEdited = updated;
+}
