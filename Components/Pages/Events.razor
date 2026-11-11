@@ -1,32 +1,133 @@
 @page "/events"
+@using System.Diagnostics
 @inject EventService EventService
 
 <PageTitle>Events · EventEase</PageTitle>
 
 <h1>Upcoming events</h1>
-<p class="text-muted">Browse events, open the details, or register. Use <em>Edit</em> to change a card — the summary below updates live (two-way binding).</p>
+<p class="text-muted">Browse events, open the details, or register. Use <em>Edit</em> to change a card — only valid changes are saved.</p>
 
-<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3 mb-4">
-    @foreach (var ev in events)
-    {
-        <div class="col" @key="ev.Id">
-            <EventCard Event="ev" EventChanged="OnEventChanged" />
+<div class="row g-2 align-items-end mb-3">
+    <div class="col-sm-5">
+        <label class="form-label small" for="search">Search by name or location</label>
+        <input id="search" class="form-control" placeholder="e.g. Gala, Roatán"
+               @bind="search" @bind:event="oninput" @bind:after="ApplyFilter" />
+    </div>
+    <div class="col-sm-3">
+        <label class="form-label small" for="dataset">Dataset (performance test)</label>
+        <select id="dataset" class="form-select" @bind="datasetSize" @bind:after="ChangeDataset">
+            <option value="4">4 sample events</option>
+            <option value="1000">1,000 events</option>
+            <option value="10000">10,000 events</option>
+        </select>
+    </div>
+    <div class="col-sm-4">
+        <div class="form-check form-switch mb-2">
+            <input id="virtualize" class="form-check-input" type="checkbox"
+                   @bind="useVirtualization" @bind:after="StartTiming" />
+            <label class="form-check-label" for="virtualize">Virtualization (render only visible rows)</label>
         </div>
-    }
+    </div>
 </div>
+
+<p class="small text-muted" id="perf-stats">
+    Showing @filtered.Count of @EventService.Count events
+    @if (lastRenderMs is not null)
+    {
+        <span> · last render: <strong id="render-ms">@lastRenderMs ms</strong> (@(useVirtualization ? "virtualized" : "all rows"))</span>
+    }
+</p>
+
+@if (filtered.Count == 0)
+{
+    <div class="alert alert-secondary">No events match "@search".</div>
+}
+else if (useVirtualization)
+{
+    @* Only the rows in (or near) the viewport are in the DOM, so 10,000 events cost about as much as 20. *@
+    <Virtualize Items="rows" Context="row" ItemSize="190" OverscanCount="4">
+        <ItemContent>
+            <EventRow Items="row" OnEventChanged="OnEventChanged" />
+        </ItemContent>
+        <Placeholder>
+            <div style="height:190px" class="placeholder-glow"><span class="placeholder col-12 h-100"></span></div>
+        </Placeholder>
+    </Virtualize>
+}
+else
+{
+    @* Activity 1 behaviour, kept for comparison: every card is rendered. *@
+    @foreach (var row in rows)
+    {
+        <EventRow @key="row[0].Id" Items="row" OnEventChanged="OnEventChanged" />
+    }
+}
 
 @if (lastEdited is not null)
 {
-    <div class="alert alert-info">
-        Last edited: <strong>@lastEdited.Name</strong> — @lastEdited.Date.ToShortDateString() — @lastEdited.Location
+    <div class="alert alert-info mt-3">
+        Last saved: <strong>@lastEdited.Name</strong> — @lastEdited.Date.ToShortDateString() — @lastEdited.Location
     </div>
 }
 
 @code {
-    private IReadOnlyList<EventItem> events = [];
+    private const int CardsPerRow = 3;
+
+    private string search = string.Empty;
+    private int datasetSize;
+    private bool useVirtualization = true;
+
+    private List<EventItem> filtered = [];
+    private List<EventItem[]> rows = [];
     private EventItem? lastEdited;
 
-    protected override void OnInitialized() => events = EventService.GetAll();
+    private readonly Stopwatch stopwatch = new();
+    private long? lastRenderMs;
 
-    private void OnEventChanged(EventItem updated) => lastEdited = updated;
+    protected override void OnInitialized()
+    {
+        datasetSize = EventService.Count;
+        ApplyFilter();
+    }
+
+    // Filtering runs only when the search text or dataset changes — not on every render.
+    private void ApplyFilter()
+    {
+        var all = EventService.GetAll();
+        var term = search.Trim();
+
+        filtered = term.Length == 0
+            ? all.ToList()
+            : all.Where(e => e.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                          || e.Location.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        rows = filtered.Chunk(CardsPerRow).ToList();
+        StartTiming();
+    }
+
+    private void ChangeDataset()
+    {
+        EventService.UseDataset(datasetSize);
+        lastEdited = null;
+        ApplyFilter();
+    }
+
+    private void StartTiming() => stopwatch.Restart();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Server-side render + diff time. Measured once per change to avoid a render loop.
+        if (stopwatch.IsRunning)
+        {
+            stopwatch.Stop();
+            lastRenderMs = stopwatch.ElapsedMilliseconds;
+            StateHasChanged();
+        }
+    }
+
+    private void OnEventChanged(EventItem updated)
+    {
+        lastEdited = updated;
+        ApplyFilter(); // name/location may no longer match the search
+    }
 }

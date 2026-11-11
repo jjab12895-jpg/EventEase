@@ -1,0 +1,18 @@
+@* One row of up to 3 event cards. Rows (not single cards) are virtualized so the responsive grid keeps working. *@
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3 mb-3">
+    @foreach (var ev in Items)
+    {
+        <div class="col" @key="ev.Id">
+            <EventCard Event="ev" EventChanged="OnEventChanged" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public EventItem[] Items { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<EventItem> OnEventChanged { get; set; }
+}

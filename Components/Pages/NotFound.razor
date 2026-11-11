@@ -1,0 +1,30 @@
+@page "/not-found"
+@* Catch-all route: any path that no other page matches (e.g. /foo, /events/abc, /events/1/xyz)
+   lands here instead of an empty 404 page. Literal and constrained routes always win over a
+   catch-all, so this never hides a real page. "nonfile" skips paths like /missing.css. *@
+@page "/{*path:nonfile}"
+
+<PageTitle>Not found · EventEase</PageTitle>
+
+<NotFoundMessage Message="@message" />
+
+@code {
+    [Parameter]
+    public string? Path { get; set; }
+
+    // Available during server prerendering: return a real 404 status (not 200) for unknown URLs.
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (HttpContext is { Response.HasStarted: false })
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        }
+    }
+
+    private string message => string.IsNullOrEmpty(Path)
+        ? "The page you're looking for doesn't exist or was moved."
+        : $"There's no page at \"/{Path}\".";
+}

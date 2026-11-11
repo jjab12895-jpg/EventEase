@@ -1,59 +1,76 @@
 @* Reusable card that displays one event.
-   Supports two-way binding from the parent:  <EventCard @bind-Event="myEvent" />  *@
+   Two-way binding from the parent:  <EventCard @bind-Event="myEvent" />
+   Edits happen on a draft copy; the bound event is only updated when the draft passes validation. *@
 
-<div class="card h-100 shadow-sm event-card">
-    <div class="card-body">
-        @if (IsEditing)
+@if (Event is null)
+{
+    <div class="card h-100 border-warning event-card">
+        <div class="card-body text-muted">Event data is unavailable.</div>
+    </div>
+}
+else
+{
+    <div class="card h-100 shadow-sm event-card">
+        @if (draft is not null)
         {
-            <div class="mb-2">
-                <label class="form-label small" for="name-@Event.Id">Event name</label>
-                <input id="name-@Event.Id" class="form-control form-control-sm"
-                       @bind="Event.Name" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
-            </div>
-            <div class="mb-2">
-                <label class="form-label small" for="date-@Event.Id">Date</label>
-                <input id="date-@Event.Id" type="date" class="form-control form-control-sm"
-                       @bind="Event.Date" @bind:after="NotifyChangedAsync" />
-            </div>
-            <div class="mb-2">
-                <label class="form-label small" for="loc-@Event.Id">Location</label>
-                <input id="loc-@Event.Id" class="form-control form-control-sm"
-                       @bind="Event.Location" @bind:event="oninput" @bind:after="NotifyChangedAsync" />
-            </div>
+            <EditForm Model="draft" OnValidSubmit="SaveAsync" FormName="@($"edit-event-{Event.Id}")">
+                <DataAnnotationsValidator />
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label small" for="name-@Event.Id">Event name</label>
+                        <InputText id="@($"name-{Event.Id}")" class="form-control form-control-sm" @bind-Value="draft.Name" />
+                        <ValidationMessage For="() => draft.Name" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small" for="date-@Event.Id">Date</label>
+                        <InputDate id="@($"date-{Event.Id}")" class="form-control form-control-sm" @bind-Value="draft.Date"
+                                   ParsingErrorMessage="Enter a valid date." />
+                        <ValidationMessage For="() => draft.Date" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small" for="loc-@Event.Id">Location</label>
+                        <InputText id="@($"loc-{Event.Id}")" class="form-control form-control-sm" @bind-Value="draft.Location" />
+                        <ValidationMessage For="() => draft.Location" />
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent d-flex gap-2">
+                    <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Cancel</button>
+                </div>
+            </EditForm>
         }
         else
         {
-            <h5 class="card-title">@Event.Name</h5>
-            <p class="card-text mb-1">
-                <span class="text-muted">Date:</span> @Event.Date.ToString("dddd, MMM d, yyyy")
-            </p>
-            <p class="card-text">
-                <span class="text-muted">Location:</span> @Event.Location
-            </p>
+            <div class="card-body">
+                <h5 class="card-title">@Event.Name</h5>
+                <p class="card-text mb-1">
+                    <span class="text-muted">Date:</span> @Event.Date.ToString("dddd, MMM d, yyyy")
+                </p>
+                <p class="card-text">
+                    <span class="text-muted">Location:</span> @Event.Location
+                </p>
+            </div>
+            <div class="card-footer bg-transparent d-flex gap-2">
+                @if (ShowActions)
+                {
+                    <a class="btn btn-sm btn-primary" href="@($"events/{Event.Id}")">Details</a>
+                    <a class="btn btn-sm btn-outline-success" href="@($"events/{Event.Id}/register")">Register</a>
+                }
+                @if (AllowEdit)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="StartEdit">Edit</button>
+                }
+            </div>
         }
     </div>
-
-    <div class="card-footer bg-transparent d-flex gap-2">
-        @if (ShowActions)
-        {
-            <a class="btn btn-sm btn-primary" href="@($"events/{Event.Id}")">Details</a>
-            <a class="btn btn-sm btn-outline-success" href="@($"events/{Event.Id}/register")">Register</a>
-        }
-        @if (AllowEdit)
-        {
-            <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="ToggleEdit">
-                @(IsEditing ? "Done" : "Edit")
-            </button>
-        }
-    </div>
-</div>
+}
 
 @code {
-    /// <summary>The event to display. Required.</summary>
+    /// <summary>The event to display.</summary>
     [Parameter, EditorRequired]
-    public EventItem Event { get; set; } = default!;
+    public EventItem? Event { get; set; }
 
-    /// <summary>Raised when a field changes, enabling @bind-Event in the parent.</summary>
+    /// <summary>Raised after a valid edit is saved, enabling @bind-Event in the parent.</summary>
     [Parameter]
     public EventCallback<EventItem> EventChanged { get; set; }
 
@@ -65,9 +82,19 @@
     [Parameter]
     public bool AllowEdit { get; set; } = true;
 
-    private bool IsEditing { get; set; }
+    // Non-null while editing. Validation runs against this copy, never against Event directly.
+    private EventItem? draft;
 
-    private void ToggleEdit() => IsEditing = !IsEditing;
+    private void StartEdit() => draft = Event?.Clone();
 
-    private Task NotifyChangedAsync() => EventChanged.InvokeAsync(Event);
+    private void CancelEdit() => draft = null;
+
+    private async Task SaveAsync()
+    {
+        if (Event is null || draft is null) return;
+
+        Event.CopyFrom(draft);
+        draft = null;
+        await EventChanged.InvokeAsync(Event);
+    }
 }

@@ -1,0 +1,13 @@
+@* Friendly "not found" panel shared by the 404 page and pages that receive an unknown event id. *@
+
+<div class="text-center py-5">
+    <h1 class="display-6">@Title</h1>
+    <p class="text-muted">@Message</p>
+    <a class="btn btn-primary" href="events">Browse events</a>
+    <a class="btn btn-link" href="">Go home</a>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Page not found";
+    [Parameter] public string Message { get; set; } = "The page you're looking for doesn't exist or was moved.";
+}

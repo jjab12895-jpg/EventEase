@@ -49,3 +49,9 @@ h1:focus {
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
 }
+
+/* EventCard: compact validation messages inside cards */
+.event-card .validation-message {
+    font-size: .8rem;
+    margin-top: .2rem;
+}

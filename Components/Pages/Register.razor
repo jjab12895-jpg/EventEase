@@ -17,8 +17,7 @@
 
 @if (ev is null)
 {
-    <div class="alert alert-warning">No event with ID @Id exists.</div>
-    <a class="btn btn-secondary" href="events">Back to events</a>
+    <NotFoundMessage Title="Event not found" Message="@($"No event with ID {Id} exists. It may have been removed.")" />
 }
 else if (submitted)
 {

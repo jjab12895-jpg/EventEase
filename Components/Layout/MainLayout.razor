@@ -1,4 +1,4 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 <div class="page">
     <div class="sidebar">
@@ -11,7 +11,19 @@
         </div>
 
         <article class="content px-4">
-            @Body
+            @* Catches unexpected exceptions in a page so the rest of the app keeps working. *@
+            <ErrorBoundary @ref="errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent>
+                    <div class="alert alert-danger mt-3">
+                        <strong>Something went wrong.</strong> The problem has been logged.
+                        <button class="btn btn-sm btn-outline-danger ms-2" @onclick="Recover">Try again</button>
+                        <a class="btn btn-sm btn-link" href="events">Back to events</a>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </article>
     </main>
 </div>
@@ -21,3 +33,12 @@
     <a href="" class="reload">Reload</a>
     <a class="dismiss">🗙</a>
 </div>
+
+@code {
+    private ErrorBoundary? errorBoundary;
+
+    // Reset the boundary when the user navigates, otherwise the error UI would stick to every page.
+    protected override void OnParametersSet() => errorBoundary?.Recover();
+
+    private void Recover() => errorBoundary?.Recover();
+}

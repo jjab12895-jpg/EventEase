@@ -12,14 +12,13 @@
 
 @if (ev is null)
 {
-    <div class="alert alert-warning">No event with ID @Id exists.</div>
-    <a class="btn btn-secondary" href="events">Back to events</a>
+    <NotFoundMessage Title="Event not found" Message="@($"No event with ID {Id} exists. It may have been removed.")" />
 }
 else
 {
     <div class="row g-4">
         <div class="col-md-5">
-            @* Two-way binding: edits in the card update `ev`, and the text on the right re-renders. *@
+            @* Two-way binding: valid edits saved in the card update `ev`, and the text on the right re-renders. *@
             <EventCard @bind-Event="ev" ShowActions="false" />
         </div>
         <div class="col-md-7">
