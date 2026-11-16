@@ -25,6 +25,13 @@ public class EventItem
     [StringLength(500, ErrorMessage = "Description can't exceed 500 characters.")]
     public string Description { get; set; } = string.Empty;
 
+    /// <summary>Maximum number of registrations accepted.</summary>
+    [Range(1, 100_000, ErrorMessage = "Capacity must be between 1 and 100,000.")]
+    public int Capacity { get; set; } = 100;
+
+    /// <summary>Registration closes once the event day has passed.</summary>
+    public bool IsPast => Date.Date < DateTime.Today;
+
     /// <summary>Returns a copy, used as an editable draft.</summary>
     public EventItem Clone() => (EventItem)MemberwiseClone();
 

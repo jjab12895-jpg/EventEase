@@ -1,27 +1,31 @@
+using System.Globalization;
 using EventEase.Components;
 using EventEase.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Consistent date/number formatting regardless of the server's OS culture.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Mock data store shared by all pages.
+// Shared, in-memory data for all users (replace with a database for real deployments).
 builder.Services.AddSingleton<EventService>();
+builder.Services.AddSingleton<AttendanceService>();
+
+// One per browser tab (Blazor circuit): the user's session state.
+builder.Services.AddScoped<UserSessionService>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
 app.UseAntiforgery();
 

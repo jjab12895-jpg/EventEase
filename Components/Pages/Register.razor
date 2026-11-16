@@ -1,6 +1,8 @@
 @page "/events/{Id:int}/register"
+@implements IDisposable
 @inject EventService EventService
-@inject NavigationManager Nav
+@inject AttendanceService Attendance
+@inject UserSessionService Session
 
 <PageTitle>Register · EventEase</PageTitle>
 
@@ -19,34 +21,82 @@
 {
     <NotFoundMessage Title="Event not found" Message="@($"No event with ID {Id} exists. It may have been removed.")" />
 }
-else if (submitted)
+else if (confirmation is not null)
 {
-    <div class="alert alert-success">
-        Thanks, <strong>@fullName</strong>! You're registered for <strong>@ev.Name</strong> on @ev.Date.ToString("D").
+    <div class="alert alert-success" id="registration-success">
+        <h2 class="h4">You're registered!</h2>
+        <p class="mb-1"><strong>@confirmation.FullName</strong>, your spot for <strong>@ev.Name</strong> on @ev.Date.ToString("D") is confirmed.</p>
+        <p class="mb-0">Confirmation code: <strong id="confirmation-code">@confirmation.Code</strong> · sent to @confirmation.Email</p>
     </div>
-    <button class="btn btn-primary" @onclick="@(() => Nav.NavigateTo("events"))">Browse more events</button>
+    <a class="btn btn-primary" href="my-registrations">View my registrations</a>
+    <a class="btn btn-outline-secondary" href="events">Browse more events</a>
+    <button type="button" class="btn btn-link" @onclick="RegisterAnother">Register someone else</button>
 }
 else
 {
     <h1>Register for @ev.Name</h1>
-    <p class="text-muted">@ev.Date.ToString("D") · @ev.Location</p>
+    <p class="text-muted">
+        @ev.Date.ToString("D") · @ev.Location ·
+        <span id="seats-left">@SeatsLeft of @ev.Capacity seats left</span>
+    </p>
 
-    @* Basic form for now — validation and state management come in Activity 3. *@
-    <div class="col-md-6">
-        <div class="mb-3">
-            <label class="form-label" for="fullName">Full name</label>
-            <input id="fullName" class="form-control" @bind="fullName" @bind:event="oninput" />
-        </div>
-        <div class="mb-3">
-            <label class="form-label" for="email">Email</label>
-            <input id="email" type="email" class="form-control" @bind="email" @bind:event="oninput" />
-        </div>
-        <button class="btn btn-success" @onclick="Submit"
-                disabled="@(string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email))">
-            Register
-        </button>
-        <a class="btn btn-link" href="@($"events/{ev.Id}")">Cancel</a>
-    </div>
+    @if (ev.IsPast)
+    {
+        <div class="alert alert-secondary">Registration is closed: this event has already taken place.</div>
+    }
+    else if (SeatsLeft <= 0)
+    {
+        <div class="alert alert-warning" id="event-full">This event is full. Check out other <a href="events">upcoming events</a>.</div>
+    }
+    else
+    {
+        @if (Session.IsSignedIn && Attendance.IsRegistered(ev.Id, Session.CurrentUser!.Email))
+        {
+            <div class="alert alert-info">
+                You're already registered for this event. See <a href="my-registrations">My registrations</a>,
+                or use the form to register someone else.
+            </div>
+        }
+        @if (formError is not null)
+        {
+            <div class="alert alert-danger" role="alert" id="form-error">@formError</div>
+        }
+
+        <EditForm EditContext="editContext" OnValidSubmit="SubmitAsync" OnInvalidSubmit="OnInvalidSubmit"
+                  FormName="registration" class="col-lg-7" novalidate>
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label class="form-label" for="fullName">Full name *</label>
+                <InputText id="fullName" class="form-control" @bind-Value="form.FullName" autocomplete="name" />
+                <ValidationMessage For="() => form.FullName" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="email">Email *</label>
+                <InputText id="email" type="email" class="form-control" @bind-Value="form.Email" autocomplete="email" />
+                <ValidationMessage For="() => form.Email" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="phone">Phone (optional)</label>
+                <InputText id="phone" type="tel" class="form-control" @bind-Value="form.Phone" autocomplete="tel" />
+                <ValidationMessage For="() => form.Phone" />
+            </div>
+            <div class="form-check mb-2">
+                <InputCheckbox id="acceptTerms" class="form-check-input" @bind-Value="form.AcceptTerms" />
+                <label class="form-check-label" for="acceptTerms">I accept the event terms and code of conduct *</label>
+                <ValidationMessage For="() => form.AcceptTerms" />
+            </div>
+            <div class="form-check mb-3">
+                <InputCheckbox id="rememberMe" class="form-check-input" @bind-Value="form.RememberMe" />
+                <label class="form-check-label" for="rememberMe">Remember me for this session</label>
+            </div>
+
+            <button type="submit" class="btn btn-success" disabled="@isSubmitting">
+                @(isSubmitting ? "Registering…" : "Register")
+            </button>
+            <a class="btn btn-link" href="@($"events/{ev.Id}")">Cancel</a>
+        </EditForm>
+    }
 }
 
 @code {
@@ -54,15 +104,109 @@ else
     public int Id { get; set; }
 
     private EventItem? ev;
-    private string fullName = string.Empty;
-    private string email = string.Empty;
-    private bool submitted;
+    private RegistrationForm form = new();
+    private EditContext editContext = default!;
+    private ValidationMessageStore serverErrors = default!;
+    private Registration? confirmation;
+    private string? formError;
+    private bool isSubmitting;
+    private int? loadedId;
+
+    private int SeatsLeft => ev is null ? 0 : Math.Max(0, ev.Capacity - Attendance.CountForEvent(ev.Id));
+
+    protected override void OnInitialized() => Attendance.Changed += OnAttendanceChanged;
 
     protected override void OnParametersSet()
     {
+        if (loadedId == Id) return;
+        loadedId = Id;
         ev = EventService.GetById(Id);
-        submitted = false;
+        ResetForm();
     }
 
-    private void Submit() => submitted = true;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.InitializeAsync();
+        if (Prefill()) StateHasChanged();
+    }
+
+    private void ResetForm()
+    {
+        form = new RegistrationForm();
+        editContext = new EditContext(form);
+        serverErrors = new ValidationMessageStore(editContext);
+        // A server-side error (e.g. duplicate email) disappears as soon as the user edits that field.
+        editContext.OnFieldChanged += (_, e) => serverErrors.Clear(e.FieldIdentifier);
+        confirmation = null;
+        formError = null;
+        Prefill();
+    }
+
+    // Session continuity: fill in the signed-in user's details.
+    private bool Prefill()
+    {
+        if (Session.CurrentUser is not { } user || form.FullName.Length > 0 || form.Email.Length > 0) return false;
+        form.FullName = user.FullName;
+        form.Email = user.Email;
+        return true;
+    }
+
+    private void OnInvalidSubmit() => formError = "Please fix the highlighted fields and try again.";
+
+    private async Task SubmitAsync()
+    {
+        if (isSubmitting || ev is null) return; // guards against double-clicks
+        isSubmitting = true;
+        formError = null;
+
+        try
+        {
+            var result = Attendance.Register(ev.Id, form);
+            switch (result.Status)
+            {
+                case RegistrationStatus.Success:
+                    if (form.RememberMe)
+                    {
+                        await Session.SignInAsync(new UserProfile { FullName = form.FullName, Email = form.Email });
+                    }
+                    confirmation = result.Registration;
+                    break;
+
+                case RegistrationStatus.AlreadyRegistered:
+                    serverErrors.Add(() => form.Email, "This email is already registered for this event.");
+                    editContext.NotifyValidationStateChanged();
+                    formError = "Please fix the highlighted fields and try again.";
+                    break;
+
+                case RegistrationStatus.EventFull:
+                    formError = "Sorry, the last seat was just taken. This event is now full.";
+                    break;
+
+                case RegistrationStatus.RegistrationClosed:
+                    formError = "Registration for this event is closed.";
+                    break;
+
+                default:
+                    formError = "This event no longer exists.";
+                    break;
+            }
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void RegisterAnother()
+    {
+        ResetForm();
+        form.FullName = string.Empty;
+        form.Email = string.Empty;
+    }
+
+    // Seats left can change because of other users; refresh on this circuit's sync context.
+    private void OnAttendanceChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Attendance.Changed -= OnAttendanceChanged;
 }

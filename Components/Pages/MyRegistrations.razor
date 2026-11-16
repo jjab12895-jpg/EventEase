@@ -1,0 +1,104 @@
+@page "/my-registrations"
+@implements IDisposable
+@inject EventService EventService
+@inject AttendanceService Attendance
+@inject UserSessionService Session
+
+<PageTitle>My registrations · EventEase</PageTitle>
+
+<h1>My registrations</h1>
+
+@if (!Session.IsLoaded)
+{
+    <p class="text-muted">Loading your session…</p>
+}
+else if (Session.CurrentUser is not { } user)
+{
+    <div class="alert alert-secondary">
+        Sign in to see your registrations. <a href="profile?returnUrl=/my-registrations">Sign in</a>
+    </div>
+}
+else
+{
+    <p class="text-muted">Registrations for <strong>@user.Email</strong>.</p>
+
+    @if (items.Count == 0)
+    {
+        <div class="alert alert-secondary">You haven't registered for any events yet. <a href="events">Browse events</a>.</div>
+    }
+    else
+    {
+        <ul class="list-group" id="my-registrations">
+            @foreach (var (reg, ev) in items)
+            {
+                <li class="list-group-item d-flex flex-wrap align-items-center gap-2" @key="reg.Id">
+                    <div class="me-auto">
+                        <a class="fw-semibold" href="@($"events/{ev.Id}")">@ev.Name</a>
+                        <div class="small text-muted">@ev.Date.ToString("D") · @ev.Location · <code>@reg.Code</code></div>
+                    </div>
+                    @if (reg.CheckedIn)
+                    {
+                        <span class="badge text-bg-success">Checked in</span>
+                    }
+                    else if (confirmCancelId == reg.Id)
+                    {
+                        @* Inline two-step confirmation instead of a blocking browser dialog. *@
+                        <span class="small">Cancel this registration?</span>
+                        <button type="button" class="btn btn-sm btn-danger" @onclick="() => Cancel(reg)">Yes, cancel</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => confirmCancelId = null">Keep</button>
+                    }
+                    else
+                    {
+                        <span class="badge text-bg-light border">Registered</span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => confirmCancelId = reg.Id">Cancel</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private List<(Registration Reg, EventItem Event)> items = [];
+    private int? confirmCancelId;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnStateChanged;
+        Attendance.Changed += OnStateChanged;
+        Load();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Session.InitializeAsync();
+    }
+
+    private void Load()
+    {
+        items = Attendance.GetForEmail(Session.CurrentUser?.Email)
+            .Select(r => (Reg: r, Event: EventService.GetById(r.EventId)))
+            .Where(x => x.Event is not null)
+            .Select(x => (x.Reg, x.Event!))
+            .OrderBy(x => x.Item2.Date)
+            .ToList();
+    }
+
+    private void Cancel(Registration reg)
+    {
+        confirmCancelId = null;
+        Attendance.Cancel(reg.Id, reg.Email);
+    }
+
+    private void OnStateChanged() => _ = InvokeAsync(() =>
+    {
+        Load();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Session.Changed -= OnStateChanged;
+        Attendance.Changed -= OnStateChanged;
+    }
+}

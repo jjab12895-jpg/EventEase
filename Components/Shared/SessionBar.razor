@@ -1,0 +1,55 @@
+@* Top-bar User Session Tracker: shows who is signed in and starts loading the saved session. *@
+@implements IDisposable
+@inject UserSessionService Session
+@inject AttendanceService Attendance
+
+<div class="session-bar d-flex align-items-center gap-3 small" id="session-bar">
+    @if (!Session.IsLoaded)
+    {
+        <span class="text-muted">Loading session…</span>
+    }
+    else if (Session.CurrentUser is { } user)
+    {
+        <span>Signed in as <strong id="session-user">@user.FullName</strong></span>
+        <a href="my-registrations">My registrations (@registrationCount)</a>
+        <a href="profile">Session</a>
+    }
+    else
+    {
+        <span class="text-muted">Browsing as guest</span>
+        <a href="profile">Sign in</a>
+    }
+</div>
+
+@code {
+    private int registrationCount;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnStateChanged;
+        Attendance.Changed += OnStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Session.InitializeAsync();
+    }
+
+    protected override void OnParametersSet() => UpdateCount();
+
+    private void UpdateCount() =>
+        registrationCount = Attendance.GetForEmail(Session.CurrentUser?.Email).Count;
+
+    // Events can fire from another user's circuit (Attendance), so marshal back with InvokeAsync.
+    private void OnStateChanged() => _ = InvokeAsync(() =>
+    {
+        UpdateCount();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Session.Changed -= OnStateChanged;
+        Attendance.Changed -= OnStateChanged;
+    }
+}

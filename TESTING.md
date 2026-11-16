@@ -1,4 +1,6 @@
-# EventEase – Activity 2: Debugging & Optimization
+# EventEase – Test report
+
+# Activity 2: Debugging & Optimization
 
 ## Issues found (Activity 1 build)
 
@@ -69,8 +71,62 @@ Automated browser run (Playwright, Chromium, 1280×900) against `dotnet run`.
 
 The "last render" figure on the page is server-side render and diff time. The end-to-end numbers above also include sending the update and building the DOM in the browser, which is where the non-virtualized list spends its time.
 
-## Copilot prompts used / suggested
-- "Find bugs in EventCard.razor: what happens with empty or invalid input?"
-- "Add DataAnnotations validation to EventItem and use an EditForm in EventCard so only valid data updates the bound event."
-- "How do I handle unknown routes in a .NET 8 Blazor Web App with interactive server rendering?"
-- "Optimize this list of 10,000 EventCard components using Virtualize."
+# Activity 3: Registration, session state & attendance
+
+Automated browser run (Playwright, Chromium) against `dotnet run` in Development: **33 checks, all passed, no browser JS errors, no server exceptions.** A smoke test of the `dotnet publish -c Release` build in Production also passed.
+
+### Registration Form – error handling
+
+| Case | Result |
+|------|--------|
+| Submit empty form | "Full name is required." · "Email is required." · "You must accept the event terms to register." + top alert "Please fix the highlighted fields…" ✅ |
+| Name `J0hn 99`, email `ana@`, phone `abc` | Specific message on each field ✅ |
+| Email without domain extension (`ana@mail`) | "Enter a valid email address…" ✅ |
+| Valid data with accents/hyphen and extra spaces (`  José Ramírez-Núñez `, `Jose.Ramirez@Example.com`) | Registered; name trimmed, email lower-cased, code `EE-000016` ✅ |
+| Same email registers again for the same event | Server-side error shown on the Email field ✅ |
+| Edit the email after that error | Error clears immediately ✅ |
+| Double-click on Register (last seat) | Exactly one registration created (5 / 5) ✅ |
+| Another tab has the form open when the last seat is taken | Live update to "This event is full." ✅ |
+| Details page of a full event | "5 of 5 seats taken · Full", button "Event full" disabled ✅ |
+| Attendance page for unknown event `/events/999/attendance` | "Event not found" ✅ |
+
+### User session – continuity
+
+| Case | Result |
+|------|--------|
+| After registering | Top bar: "Signed in as José Ramírez-Núñez · My registrations (1)" ✅ |
+| Open another event's form | Name and email pre-filled from the session ✅ |
+| Event the user already registered for | Notice "You're already registered…" ✅ |
+| **Reload the page (F5)** | Still signed in, registrations count kept ✅ |
+| Recently viewed events after reload | Listed on the Session page, most recent first ✅ |
+| New browser tab | Separate session (guest), as designed (`sessionStorage` is per tab) ✅ |
+| Cancel a registration (inline confirm) | Removed from the list; top-bar count updates ✅ |
+| Sign out, then reload | Guest; saved session deleted ✅ |
+| Sign-in form with invalid data | Validation messages ✅ |
+| `?returnUrl=https://evil.example` | Ignored (open-redirect protection); stays on `/profile` ✅ |
+| `?returnUrl=/attendance` | Redirected to `/attendance` ✅ |
+| Saved session that can't be decrypted (e.g. after a restart) | Caught; new session starts, no crash (by design, `CryptographicException` handled) |
+
+### Attendance Tracker
+
+| Case | Result |
+|------|--------|
+| Check in an attendee on `/events/2/attendance` | "2 of 3 → 3 of 3 checked in (100%)" ✅ |
+| Overview open in another tab | Updated live: checked in 8 → 9 ✅ |
+| Attendee search "lucia" | 1 row ✅ |
+
+### Performance / responsiveness
+
+| Measurement | Result |
+|------|--------|
+| `/events` first load (navigation → first card) | 165 ms |
+| 10,000 events, virtualized | 13 ms server render · 42 cards in the DOM |
+| Attendance overview with 10,000 events loaded | 77 ms |
+| Register on a generated event (submit → confirmation) | 59 ms |
+
+### Production build
+
+| Check | Result |
+|------|--------|
+| `dotnet publish -c Release` | 0 warnings, 0 errors, ~1 MB output |
+| Run with `ASPNETCORE_ENVIRONMENT=Production` | Performance-testing tools hidden; registration + session reload work; unknown URL → HTTP 404 page; no errors in the log ✅ |

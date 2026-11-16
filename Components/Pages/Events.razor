@@ -1,6 +1,7 @@
 @page "/events"
 @using System.Diagnostics
 @inject EventService EventService
+@inject IWebHostEnvironment Env
 
 <PageTitle>Events · EventEase</PageTitle>
 
@@ -13,26 +14,30 @@
         <input id="search" class="form-control" placeholder="e.g. Gala, Roatán"
                @bind="search" @bind:event="oninput" @bind:after="ApplyFilter" />
     </div>
-    <div class="col-sm-3">
-        <label class="form-label small" for="dataset">Dataset (performance test)</label>
-        <select id="dataset" class="form-select" @bind="datasetSize" @bind:after="ChangeDataset">
-            <option value="4">4 sample events</option>
-            <option value="1000">1,000 events</option>
-            <option value="10000">10,000 events</option>
-        </select>
-    </div>
-    <div class="col-sm-4">
-        <div class="form-check form-switch mb-2">
-            <input id="virtualize" class="form-check-input" type="checkbox"
-                   @bind="useVirtualization" @bind:after="StartTiming" />
-            <label class="form-check-label" for="virtualize">Virtualization (render only visible rows)</label>
+    @* Performance-testing tools (Activity 2) are only shown in Development. *@
+    @if (Env.IsDevelopment())
+    {
+        <div class="col-sm-3">
+            <label class="form-label small" for="dataset">Dataset (performance test)</label>
+            <select id="dataset" class="form-select" @bind="datasetSize" @bind:after="ChangeDataset">
+                <option value="4">4 sample events</option>
+                <option value="1000">1,000 events</option>
+                <option value="10000">10,000 events</option>
+            </select>
         </div>
-    </div>
+        <div class="col-sm-4">
+            <div class="form-check form-switch mb-2">
+                <input id="virtualize" class="form-check-input" type="checkbox"
+                       @bind="useVirtualization" @bind:after="StartTiming" />
+                <label class="form-check-label" for="virtualize">Virtualization (render only visible rows)</label>
+            </div>
+        </div>
+    }
 </div>
 
 <p class="small text-muted" id="perf-stats">
     Showing @filtered.Count of @EventService.Count events
-    @if (lastRenderMs is not null)
+    @if (lastRenderMs is not null && Env.IsDevelopment())
     {
         <span> · last render: <strong id="render-ms">@lastRenderMs ms</strong> (@(useVirtualization ? "virtualized" : "all rows"))</span>
     }

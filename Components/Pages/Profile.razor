@@ -1,0 +1,93 @@
+@page "/profile"
+@implements IDisposable
+@inject UserSessionService Session
+@inject EventService EventService
+@inject AttendanceService Attendance
+@inject NavigationManager Nav
+
+<PageTitle>Session · EventEase</PageTitle>
+
+@if (!Session.IsLoaded)
+{
+    <p class="text-muted">Loading your session…</p>
+}
+else if (Session.CurrentUser is not { } user)
+{
+    <h1>Sign in</h1>
+    <p class="text-muted">No password needed: your name and email are kept for this browser tab so registration forms are pre-filled.</p>
+
+    <EditForm Model="profile" OnValidSubmit="SignInAsync" FormName="sign-in" class="col-lg-6" novalidate>
+        <DataAnnotationsValidator />
+        <div class="mb-3">
+            <label class="form-label" for="profile-name">Full name</label>
+            <InputText id="profile-name" class="form-control" @bind-Value="profile.FullName" autocomplete="name" />
+            <ValidationMessage For="() => profile.FullName" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="profile-email">Email</label>
+            <InputText id="profile-email" type="email" class="form-control" @bind-Value="profile.Email" autocomplete="email" />
+            <ValidationMessage For="() => profile.Email" />
+        </div>
+        <button type="submit" class="btn btn-primary">Sign in</button>
+    </EditForm>
+}
+else
+{
+    <h1>Your session</h1>
+    <dl class="row" id="session-details">
+        <dt class="col-sm-3">Name</dt><dd class="col-sm-9">@user.FullName</dd>
+        <dt class="col-sm-3">Email</dt><dd class="col-sm-9">@user.Email</dd>
+        <dt class="col-sm-3">Session started</dt><dd class="col-sm-9">@Session.StartedAt.ToString("g")</dd>
+        <dt class="col-sm-3">Registrations</dt>
+        <dd class="col-sm-9"><a href="my-registrations">@Attendance.GetForEmail(user.Email).Count</a></dd>
+    </dl>
+
+    <h2 class="h5">Recently viewed</h2>
+    @if (recent.Count == 0)
+    {
+        <p class="text-muted">Nothing yet.</p>
+    }
+    else
+    {
+        <ul id="recently-viewed">
+            @foreach (var ev in recent)
+            {
+                <li @key="ev.Id"><a href="@($"events/{ev.Id}")">@ev.Name</a> · @ev.Date.ToString("MMM d, yyyy")</li>
+            }
+        </ul>
+    }
+
+    <button type="button" class="btn btn-outline-danger" @onclick="SignOutAsync">Sign out</button>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private UserProfile profile = new();
+    private List<EventItem> recent => Session.RecentlyViewed.Select(EventService.GetById).OfType<EventItem>().ToList();
+
+    protected override void OnInitialized() => Session.Changed += OnSessionChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Session.InitializeAsync();
+    }
+
+    private async Task SignInAsync()
+    {
+        await Session.SignInAsync(profile);
+        profile = new UserProfile();
+        // Only allow local return URLs, to prevent open redirects (e.g. ?returnUrl=https://evil.example).
+        if (ReturnUrl is { Length: > 1 } url && url.StartsWith('/') && !url.StartsWith("//") && !url.StartsWith("/\\"))
+        {
+            Nav.NavigateTo(url);
+        }
+    }
+
+    private Task SignOutAsync() => Session.SignOutAsync();
+
+    private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
+}

@@ -1,0 +1,105 @@
+@page "/attendance"
+@implements IDisposable
+@inject EventService EventService
+@inject AttendanceService AttendanceService
+
+<PageTitle>Attendance · EventEase</PageTitle>
+
+<h1>Attendance tracker</h1>
+<p class="text-muted">Registrations and check-ins across all events. Updates live as people register or check in.</p>
+
+<div class="row row-cols-2 row-cols-md-4 g-3 mb-4" id="attendance-stats">
+    <div class="col"><div class="card"><div class="card-body">
+        <div class="small text-muted">Registrations</div><div class="fs-3 fw-semibold" id="stat-registered">@totalRegistered</div>
+    </div></div></div>
+    <div class="col"><div class="card"><div class="card-body">
+        <div class="small text-muted">Checked in</div><div class="fs-3 fw-semibold" id="stat-checkedin">@totalCheckedIn</div>
+    </div></div></div>
+    <div class="col"><div class="card"><div class="card-body">
+        <div class="small text-muted">Attendance rate</div><div class="fs-3 fw-semibold">@Percent(totalCheckedIn, totalRegistered)</div>
+    </div></div></div>
+    <div class="col"><div class="card"><div class="card-body">
+        <div class="small text-muted">Events with registrations</div><div class="fs-3 fw-semibold">@rows.Count</div>
+    </div></div></div>
+</div>
+
+@if (rows.Count == 0)
+{
+    <div class="alert alert-secondary">No registrations yet. <a href="events">Browse events</a> to register.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle" id="attendance-table">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th style="min-width:180px">Seats taken</th>
+                    <th class="text-end">Checked in</th>
+                    <th class="text-end">Attendance</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr @key="row.Event.Id">
+                        <td><a href="@($"events/{row.Event.Id}/attendance")">@row.Event.Name</a></td>
+                        <td>@row.Event.Date.ToString("MMM d, yyyy")</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress flex-grow-1" role="progressbar" aria-label="Seats taken"
+                                     aria-valuenow="@row.Stats.Registered" aria-valuemin="0" aria-valuemax="@row.Event.Capacity">
+                                    <div class="progress-bar" style="width:@Width(row.Stats.Registered, row.Event.Capacity)"></div>
+                                </div>
+                                <span class="small text-nowrap">@row.Stats.Registered / @row.Event.Capacity</span>
+                            </div>
+                        </td>
+                        <td class="text-end">@row.Stats.CheckedIn</td>
+                        <td class="text-end">@Percent(row.Stats.CheckedIn, row.Stats.Registered)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private sealed record Row(EventItem Event, AttendanceStats Stats);
+
+    private List<Row> rows = [];
+    private int totalRegistered;
+    private int totalCheckedIn;
+
+    protected override void OnInitialized()
+    {
+        AttendanceService.Changed += OnAttendanceChanged;
+        Load();
+    }
+
+    private void Load()
+    {
+        rows = AttendanceService.GetSummary()
+            .Select(s => (Event: EventService.GetById(s.EventId), Stats: s))
+            .Where(x => x.Event is not null)
+            .Select(x => new Row(x.Event!, x.Stats))
+            .OrderBy(r => r.Event.Date)
+            .ToList();
+
+        totalRegistered = rows.Sum(r => r.Stats.Registered);
+        totalCheckedIn = rows.Sum(r => r.Stats.CheckedIn);
+    }
+
+    private static string Percent(int part, int total) => total == 0 ? "–" : $"{(double)part / total:P0}";
+
+    private static string Width(int part, int total) =>
+        FormattableString.Invariant($"{Math.Min(100, total == 0 ? 0 : part * 100.0 / total):0.#}%");
+
+    private void OnAttendanceChanged() => _ = InvokeAsync(() =>
+    {
+        Load();
+        StateHasChanged();
+    });
+
+    public void Dispose() => AttendanceService.Changed -= OnAttendanceChanged;
+}
